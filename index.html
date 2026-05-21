@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Arduino Scanner Pro - Powered by Gemini</title>
+    <title>Arduino Vision Scanner - Powered by Gemini</title>
     <style>
         :root {
             --primary: #00f0ff;
@@ -242,16 +242,19 @@
         let btn = document.getElementById('scan-btn');
         let statusBox = document.getElementById('status-box');
 
+        // Clé API Gemini intégrée directement
+        const GEMINI_API_KEY = "AIzaSyAUOFfuqz-f5qOXxssqmMn00bSOZgpBdc4";
+
         let score = 0;
         let objetsScannes = new Set();
         let currentStream = null;
 
-        // Configuration automatique de la caméra
+        // Configuration automatique de la caméra arrière
         async function initCamera() {
             try {
                 const constraints = {
                     video: {
-                        facingMode: "environment", // Caméra arrière
+                        facingMode: "environment", // Force la caméra arrière sur smartphone
                         width: { ideal: 640 },
                         height: { ideal: 480 }
                     }
@@ -267,11 +270,16 @@
         }
 
         async function analyserComposant() {
+            if (!currentStream) { 
+                await initCamera(); 
+                if (!currentStream) return; 
+            }
+
             btn.disabled = true;
             statusBox.className = "status-panel";
             statusBox.innerText = "Analyse de l'image par l'IA Gemini en cours... ⏳";
 
-            // Capture de la frame vidéo
+            // Capture de l'image depuis le flux vidéo
             canvas.width = video.videoWidth || 640;
             canvas.height = video.videoHeight || 480;
             let ctx = canvas.getContext('2d');
@@ -281,19 +289,35 @@
 
             const prompt = "Analyse cette image. Si tu distingues clairement une carte programmable (Arduino Uno, Nano, Mega, ESP32, Raspberry Pi Pico) ou un module/capteur électronique identifiable (ex: Capteur ultrason HC-SR04, Écran LCD, Servomoteur, Module RFID), réponds STRICTEMENT avec son nom usuel de manière concise (max 4 mots, ex: 'Arduino Uno' ou 'Capteur Ultrason HC-SR04'). Si l'élément n'est pas un composant électronique bien défini, ou si la photo est trop floue/ambiguë, réponds par le mot unique : INCONNU";
 
-            // On appelle la fonction "Serverless" sécurisée de Vercel (qu'on va créer juste après)
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+
             try {
-                let response = await fetch('/api/scanner', {
+                let response = await fetch(url, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ image: base64Data, prompt: prompt })
+                    body: JSON.stringify({
+                        contents: [{
+                            parts: [
+                                { text: prompt },
+                                { inlineData: { mimeType: "image/jpeg", data: base64Data } }
+                            ]
+                        }],
+                        generationConfig: { temperature: 0.1 }
+                    })
                 });
 
+                if (!response.ok) {
+                    throw new Error("Erreur de réponse de l'API");
+                }
+
                 let data = await response.json();
-                processVisionResult(data.result);
+                let resultText = data.candidates[0].content.parts[0].text.trim();
+                
+                processVisionResult(resultText);
             } catch (error) {
                 statusBox.className = "status-panel error";
-                statusBox.innerText = "Erreur lors de la communication avec l'IA.";
+                statusBox.innerText = "Erreur lors de la communication avec l'IA Gemini. Vérifiez votre réseau.";
+                console.error(error);
             } finally {
                 btn.disabled = false;
             }
@@ -322,7 +346,7 @@
             }
         }
 
-        // Lancement immédiat
+        // Lancement de la caméra au chargement
         initCamera();
     </script>
 </body>
