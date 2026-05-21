@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Arduino Vision Scanner - Capture</title>
+    <title>Arduino Vision Scanner - Multijoueur</title>
+    <!-- Chargement de Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         :root {
             --primary: #00f0ff;
@@ -16,14 +18,9 @@
             --error: #ff3131;
         }
 
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-
+        * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
-            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
             background-color: var(--bg-dark);
             color: var(--text-main);
             min-height: 100vh;
@@ -33,205 +30,161 @@
             align-items: center;
         }
 
-        header {
-            text-align: center;
-            margin-bottom: 30px;
-            width: 100%;
-            max-width: 500px;
-        }
-
-        h1 {
-            font-size: 24px;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            color: var(--primary);
-            text-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
-            margin-bottom: 10px;
-        }
-
-        p.subtitle {
-            color: var(--text-muted);
-            font-size: 14px;
-        }
-
+        header { text-align: center; margin-bottom: 20px; width: 100%; max-width: 500px; }
+        h1 { font-size: 24px; text-transform: uppercase; letter-spacing: 2px; color: var(--primary); text-shadow: 0 0 10px rgba(0, 240, 255, 0.3); }
+        p.subtitle { color: var(--text-muted); font-size: 14px; margin-top: 5px; }
+        
         .main-container {
-            width: 100%;
-            max-width: 500px;
-            background: var(--card-bg);
-            border: 1px solid rgba(0, 240, 255, 0.1);
-            border-radius: 16px;
-            padding: 24px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            width: 100%; max-width: 500px; background: var(--card-bg);
+            border: 1px solid rgba(0, 240, 255, 0.1); border-radius: 16px;
+            padding: 24px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
         }
 
-        .dashboard {
-            display: flex;
-            justify-content: space-between;
-            background: rgba(0, 0, 0, 0.2);
-            padding: 15px;
-            border-radius: 12px;
-            margin-bottom: 20px;
-            border: 1px solid rgba(255, 255, 255, 0.05);
-        }
+        .screen { display: none; }
+        .screen.active { display: block; }
 
-        .stat-box {
-            text-align: center;
-            flex: 1;
+        /* Formulaires */
+        .form-group { margin-bottom: 15px; }
+        label { display: block; font-size: 12px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 5px; }
+        input {
+            width: 100%; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px; color: white; font-size: 16px; transition: 0.2s;
         }
+        input:focus { border-color: var(--primary); outline: none; }
 
-        .stat-box:not(:last-child) {
-            border-right: 1px solid rgba(255, 255, 255, 0.1);
-        }
+        /* Jeu & Dashboard */
+        .dashboard { display: flex; justify-content: space-between; background: rgba(0, 0, 0, 0.2); padding: 15px; border-radius: 12px; margin-bottom: 20px; }
+        .stat-box { text-align: center; flex: 1; }
+        .stat-box:not(:last-child) { border-right: 1px solid rgba(255, 255, 255, 0.1); }
+        .stat-val { font-size: 22px; font-weight: bold; color: var(--primary); }
+        .stat-val.score { color: var(--success); }
+        .stat-lbl { font-size: 11px; color: var(--text-muted); text-transform: uppercase; }
 
-        .stat-val {
-            font-size: 22px;
-            font-weight: bold;
-            color: var(--primary);
-        }
+        .viewport-wrapper { position: relative; width: 100%; aspect-ratio: 4/3; background: #000; border-radius: 12px; overflow: hidden; border: 2px solid rgba(0, 240, 255, 0.2); margin-bottom: 20px; }
+        video, #photo-preview { width: 100%; height: 100%; object-fit: cover; }
+        #photo-preview { display: none; }
+        .scan-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 20px solid rgba(10, 14, 23, 0.6); pointer-events: none; }
+        .scan-reticle { position: absolute; top: 20px; bottom: 20px; left: 20px; right: 20px; border: 2px dashed var(--primary); opacity: 0.4; }
 
-        .stat-val.score {
-            color: var(--success);
-            text-shadow: 0 0 10px rgba(57, 255, 20, 0.2);
-        }
-
-        .stat-lbl {
-            font-size: 11px;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            margin-top: 4px;
-        }
-
-        /* Zone d'affichage Caméra / Photo */
-        .viewport-wrapper {
-            position: relative;
-            width: 100%;
-            aspect-ratio: 4/3;
-            background: #000;
-            border-radius: 12px;
-            overflow: hidden;
-            border: 2px solid rgba(0, 240, 255, 0.2);
-            margin-bottom: 20px;
-        }
-
-        video, #photo-preview {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            display: block;
-        }
-
-        #photo-preview {
-            display: none; /* Caché par défaut, affiché uniquement au moment du scan */
-        }
-
-        .scan-overlay {
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            border: 20px solid rgba(10, 14, 23, 0.6);
-            pointer-events: none;
-            box-sizing: border-box;
-        }
-
-        .scan-reticle {
-            position: absolute;
-            top: 20px; bottom: 20px; left: 20px; right: 20px;
-            border: 2px dashed var(--primary);
-            opacity: 0.4;
-        }
+        /* Classement Table */
+        .leaderboard-table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        .leaderboard-table th, .leaderboard-table td { padding: 10px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .leaderboard-table th { color: var(--text-muted); font-size: 12px; text-transform: uppercase; }
+        .leaderboard-table tr:nth-child(1) td { color: #ffd700; font-weight: bold; } /* Or */
+        .leaderboard-table tr:nth-child(2) td { color: #c0c0c0; } /* Argent */
+        .leaderboard-table tr:nth-child(3) td { color: #cd7f32; } /* Bronze */
 
         /* Boutons */
         .btn-action {
-            width: 100%;
-            padding: 16px;
-            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-            color: #000;
-            border: none;
-            border-radius: 12px;
-            font-size: 16px;
-            font-weight: bold;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            cursor: pointer;
-            transition: all 0.2s;
-            box-shadow: 0 4px 15px rgba(0, 240, 255, 0.3);
+            width: 100%; padding: 16px; background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: #000; border: none; border-radius: 12px; font-size: 16px; font-weight: bold; text-transform: uppercase;
+            cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 15px rgba(0, 240, 255, 0.3); margin-top: 10px;
         }
+        .btn-action:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0, 240, 255, 0.5); }
+        .btn-secondary { background: transparent; border: 1px solid var(--text-muted); color: var(--text-main); box-shadow: none; }
+        #reset-btn { display: none; background: linear-gradient(135deg, #7687a1, #4a5568); color: white; }
 
-        .btn-action:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(0, 240, 255, 0.5);
-        }
-
-        .btn-action:disabled {
-            background: #2a3547;
-            color: var(--text-muted);
-            cursor: not-allowed;
-            transform: none;
-            box-shadow: none;
-        }
-
-        #reset-btn {
-            background: linear-gradient(135deg, #7687a1, #4a5568);
-            color: white;
-            margin-top: 10px;
-            display: none; /* Affiché seulement après un scan */
-            box-shadow: none;
-        }
-
-        .status-panel {
-            margin-top: 20px;
-            padding: 15px;
-            border-radius: 8px;
-            background: rgba(0, 0, 0, 0.15);
-            font-size: 14px;
-            line-height: 1.5;
-            border-left: 4px solid var(--primary);
-        }
-
+        .status-panel { margin-top: 20px; padding: 15px; border-radius: 8px; background: rgba(0, 0, 0, 0.15); font-size: 14px; border-left: 4px solid var(--primary); }
         .status-panel.success { border-left-color: var(--success); background: rgba(57, 255, 20, 0.05); }
         .status-panel.error { border-left-color: var(--error); background: rgba(255, 49, 49, 0.05); }
+        
+        .nav-tabs { display: flex; margin-bottom: 20px; gap: 10px; }
+        .tab-btn { flex: 1; padding: 10px; background: rgba(255,255,255,0.05); border: none; color: var(--text-muted); border-radius: 8px; cursor: pointer; }
+        .tab-btn.active { background: rgba(0, 240, 255, 0.1); color: var(--primary); border: 1px solid var(--primary); }
         canvas { display: none; }
     </style>
 </head>
 <body>
 
     <header>
-        <h1>Arduino Vision Scanner</h1>
-        <p class="subtitle">Prenez une photo pour analyser et marquer des points</p>
+        <h1>Arduino Vision</h1>
+        <p class="subtitle" id="user-tag">Mode Multijoueur & Classement</p>
     </header>
 
     <div class="main-container">
-        <!-- Dashboard de Score -->
-        <div class="dashboard">
-            <div class="stat-box">
-                <div class="stat-val score" id="score-display">0</div>
-                <div class="stat-lbl">Points</div>
+        
+        <!-- ÉCRAN 1 : CONNEXION / INSCRIPTION -->
+        <div id="screen-auth" class="screen active">
+            <div class="form-group">
+                <label>Adresse Email</label>
+                <input type="email" id="auth-email" placeholder="ton-email@gmail.com">
             </div>
-            <div class="stat-box">
-                <div class="stat-val" id="count-display">0</div>
-                <div class="stat-lbl">Objets uniques</div>
+            <button class="btn-action" onclick="connexionSansMotDePasse()">Recevoir mon code A2F (OTP)</button>
+            <div id="auth-status" class="status-panel" style="display:none;"></div>
+        </div>
+
+        <!-- ÉCRAN 2 : VÉRIFICATION CODE A2F (OTP) -->
+        <div id="screen-otp" class="screen">
+            <p style="font-size:14px; margin-bottom:15px; color:var(--text-muted)">Un code de vérification unique à 6 chiffres vous a été envoyé par email.</p>
+            <div class="form-group">
+                <label>Code de vérification (A2F)</label>
+                <input type="text" id="otp-code" placeholder="123456" inputmode="numeric" pattern="[0-9]*">
             </div>
+            <button class="btn-action" onclick="verifierCodeOTP()">Valider et jouer</button>
+            <button class="btn-action btn-secondary" onclick="changerEcran('screen-auth')">Retour</button>
+            <div id="otp-status" class="status-panel" style="display:none;"></div>
         </div>
 
-        <!-- Zone d'affichage (Vidéo ou Photo figée) -->
-        <div class="viewport-wrapper">
-            <video id="video" autoplay playsinline></video>
-            <img id="photo-preview" alt="Capture à analyser">
-            <div class="scan-overlay"><div class="scan-reticle"></div></div>
+        <!-- ÉCRAN 3 : LE JEU (SCANNER & CLASSEMENT) -->
+        <div id="screen-game" class="screen">
+            <div class="nav-tabs">
+                <button id="tab-scan" class="tab-btn active" onclick="switchTab('scan')">📸 Scanner</button>
+                <button id="tab-leader" class="tab-btn" onclick="switchTab('leader')">🏆 Classement</button>
+            </div>
+
+            <!-- Onglet Caméra -->
+            <div id="tab-content-scan">
+                <div class="dashboard">
+                    <div class="stat-box">
+                        <div class="stat-val score" id="score-display">0</div>
+                        <div class="stat-lbl">Mon Score</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-val" id="count-display">0</div>
+                        <div class="stat-lbl">Objets découverts</div>
+                    </div>
+                </div>
+
+                <div class="viewport-wrapper">
+                    <video id="video" autoplay playsinline></video>
+                    <img id="photo-preview" alt="Capture">
+                    <div class="scan-overlay"><div class="scan-reticle"></div></div>
+                </div>
+
+                <button id="scan-btn" class="btn-action" onclick="capturerEtAnalyser()">Scanner l'objet</button>
+                <button id="reset-btn" class="btn-action" onclick="relancerCamera()">Prendre une nouvelle photo</button>
+            </div>
+
+            <!-- Onglet Classement -->
+            <div id="tab-content-leader" style="display:none;">
+                <h3 style="font-size:16px; margin-bottom:10px;">🏆 TOP JOUEURS MONDIAUX</h3>
+                <table class="leaderboard-table">
+                    <thead>
+                        <tr><th>Rang</th><th>Joueur</th><th>Score</th></tr>
+                    </thead>
+                    <tbody id="leaderboard-body">
+                        <!-- Rempli par la base de données -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="status-box" class="status-panel">Initialisation...</div>
+            <button class="btn-action btn-secondary" style="margin-top:20px; padding:10px;" onclick="deconnexion()">Se déconnecter</button>
         </div>
 
-        <!-- Boutons de contrôle -->
-        <button id="scan-btn" class="btn-action" onclick="capturerEtAnalyser()">Scanner l'objet</button>
-        <button id="reset-btn" class="btn-action" onclick="relancerCamera()">Prendre une nouvelle photo</button>
-
-        <!-- Retour d'information -->
-        <div id="status-box" class="status-panel">
-            Démarrage de la caméra...
-        </div>
     </div>
 
     <canvas id="capture-canvas"></canvas>
 
     <script>
+        // CONFIGURATION SUPABASE (Remplis avec tes identifiants Supabase)
+        const SUPABASE_URL = "https://TON_PROJET.supabase.co";
+        const SUPABASE_ANON_KEY = "TA_CLE_ANON_SUPABASE";
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // CONFIGURATION GEMINI
+        const GEMINI_API_KEY = "AIzaSyAUOFfuqz-f5qOXxssqmMn00bSOZgpBdc4";
+
         let video = document.getElementById('video');
         let photoPreview = document.getElementById('photo-preview');
         let canvas = document.getElementById('capture-canvas');
@@ -239,58 +192,128 @@
         let resetBtn = document.getElementById('reset-btn');
         let statusBox = document.getElementById('status-box');
 
-        // Clé API Gemini intégrée
-        const GEMINI_API_KEY = "AIzaSyAUOFfuqz-f5qOXxssqmMn00bSOZgpBdc4";
-
-        let score = 0;
+        let userSession = null;
+        let myScore = 0;
         let objetsScannes = new Set();
         let currentStream = null;
 
-        // Configuration de la caméra arrière
+        // --- GESTION DES ÉCRANS ET ONGLETS ---
+        function changerEcran(screenId) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(screenId).classList.add('active');
+        }
+
+        function switchTab(tabName) {
+            if(tabName === 'scan') {
+                document.getElementById('tab-content-scan').style.display = 'block';
+                document.getElementById('tab-content-leader').style.display = 'none';
+                document.getElementById('tab-scan').classList.add('active');
+                document.getElementById('tab-leader').classList.remove('active');
+                if(!currentStream) initCamera();
+            } else {
+                document.getElementById('tab-content-scan').style.display = 'none';
+                document.getElementById('tab-content-leader').style.display = 'block';
+                document.getElementById('tab-scan').classList.remove('active');
+                document.getElementById('tab-leader').classList.add('active');
+                if(currentStream) {
+                    currentStream.getTracks().forEach(t => t.stop());
+                    currentStream = null;
+                }
+                chargerClassement();
+            }
+        }
+
+        // --- AUTHENTIFICATION AVEC RECOUVREMENT PAR EMAIL (OTP / A2F Direct) ---
+        async function connexionSansMotDePasse() {
+            const email = document.getElementById('auth-email').value.trim();
+            const status = document.getElementById('auth-status');
+            status.style.display = 'block';
+            status.innerText = "Envoi du code d'authentification par email... 📨";
+
+            if(!email) { status.className="status-panel error"; status.innerText="Veuillez entrer une adresse email."; return; }
+
+            // Envoie un code OTP à 6 chiffres par e-mail de manière ultra sécurisée
+            const { error } = await supabase.auth.signInWithOtp({ email: email });
+
+            if(error) {
+                status.className="status-panel error";
+                status.innerText = "Erreur : " + error.message;
+            } else {
+                status.className="status-panel success";
+                status.innerText = "Code envoyé ! Consultez votre boîte mail.";
+                setTimeout(() => { changerEcran('screen-otp'); }, 1500);
+            }
+        }
+
+        async function verifierCodeOTP() {
+            const email = document.getElementById('auth-email').value.trim();
+            const token = document.getElementById('otp-code').value.trim();
+            const status = document.getElementById('otp-status');
+            status.style.display = 'block';
+
+            const { data: { session }, error } = await supabase.auth.verifyOtp({ email, token, type: 'email' });
+
+            if(error) {
+                status.className="status-panel error";
+                status.innerText = "Code invalide ou expiré : " + error.message;
+            } else {
+                status.className="status-panel success";
+                status.innerText = "Connexion réussie !";
+                userSession = session.user;
+                setTimeout(() => { demarrerJeu(); }, 1000);
+            }
+        }
+
+        async function deconnexion() {
+            await supabase.auth.signOut();
+            location.reload();
+        }
+
+        // --- LOGIQUE DE JEU & SAUVEGARDE DES SCORES CÔTÉ CLOUD ---
+        async function demarrerJeu() {
+            document.getElementById('user-tag').innerText = `Joueur : ${userSession.email}`;
+            changerEcran('screen-game');
+            
+            // Récupérer le score existant du joueur depuis Supabase
+            const { data, error } = await supabase.from('profiles').select('score').eq('id', userSession.id).single();
+            if(data) {
+                myScore = data.score;
+                document.getElementById('score-display').innerText = myScore;
+            }
+            initCamera();
+        }
+
         async function initCamera() {
             try {
-                const constraints = {
-                    video: { facingMode: "environment", width: { ideal: 640 }, height: { ideal: 480 } }
-                };
+                const constraints = { video: { facingMode: "environment", width: { ideal: 640 }, height: { ideal: 480 } } };
                 currentStream = await navigator.mediaDevices.getUserMedia(constraints);
                 video.srcObject = currentStream;
                 statusBox.className = "status-panel";
-                statusBox.innerText = "Caméra active ! Cadrez votre composant et cliquez sur Scanner.";
+                statusBox.innerText = "Caméra en direct. Cadrez un composant et scannez !";
             } catch (err) {
                 statusBox.className = "status-panel error";
-                statusBox.innerText = "Impossible d'accéder à la caméra arrière.";
-                console.error(err);
+                statusBox.innerText = "Erreur caméra.";
             }
         }
 
         async function capturerEtAnalyser() {
             if (!currentStream) return;
 
-            // 1. Prendre la photo immédiatement (figer l'image)
-            canvas.width = video.videoWidth || 640;
-            canvas.height = video.videoHeight || 480;
+            canvas.width = video.videoWidth || 640; canvas.height = video.videoHeight || 480;
             let ctx = canvas.getContext('2d');
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            
             let base64Data = canvas.toDataURL('image/jpeg').split(',')[1];
 
-            // 2. Afficher la photo figée à la place de la vidéo
             photoPreview.src = canvas.toDataURL('image/jpeg');
-            video.style.display = 'none';
-            photoPreview.style.display = 'block';
+            video.style.display = 'none'; photoPreview.style.display = 'block';
 
-            // 3. Couper la caméra pour économiser la batterie du téléphone
             currentStream.getTracks().forEach(track => track.stop());
             currentStream = null;
 
-            // 4. Mettre à jour l'interface (boutons)
-            scanBtn.style.display = 'none';
-            resetBtn.style.display = 'block';
-            statusBox.className = "status-panel";
-            statusBox.innerText = "Photo capturée ! Analyse Gemini AI en cours... ⏳";
+            scanBtn.style.display = 'none'; resetBtn.style.display = 'block';
+            statusBox.className = "status-panel"; statusBox.innerText = "Analyse IA Gemini... ⏳";
 
-            // 5. Envoi à l'IA
-            const prompt = "Analyse cette image. Si tu distingues clairement une carte programmable (Arduino Uno, Nano, Mega, ESP32, Raspberry Pi Pico) ou un module/capteur électronique identifiable (ex: Capteur ultrason HC-SR04, Écran LCD, Servomoteur, Module RFID), réponds STRICTEMENT avec son nom usuel de manière concise (max 4 mots, ex: 'Arduino Uno' ou 'Capteur Ultrason HC-SR04'). Si l'élément n'est pas un composant électronique bien défini, ou si la photo est trop floue/ambiguë, réponds par le mot unique : INCONNU";
+            const prompt = "Analyse cette image. Si tu distingues clairement une carte programmable (Arduino Uno, Nano, Mega, ESP32, Raspberry Pi Pico) ou un module/capteur électronique identifiable (ex: Capteur ultrason HC-SR04, Écran LCD, Servomoteur, Module RFID), réponds STRICTEMENT avec son nom usuel de manière concise (max 4 mots, ex: 'Arduino Uno'). Si l'élément n'est pas un composant électronique bien défini, réponds par le mot unique : INCONNU";
             const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
             try {
@@ -302,58 +325,73 @@
                         generationConfig: { temperature: 0.1 }
                     })
                 });
-
-                if (!response.ok) throw new Error("Erreur de réponse");
-
                 let data = await response.json();
-                let resultText = data.candidates[0].content.parts[0].text.trim();
-                
-                processVisionResult(resultText);
-            } catch (error) {
-                statusBox.className = "status-panel error";
-                statusBox.innerText = "Erreur lors de l'analyse. Vérifiez votre connexion internet.";
-                console.error(error);
+                processVisionResult(data.candidates[0].content.parts[0].text.trim());
+            } catch (e) {
+                statusBox.className = "status-panel error"; statusBox.innerText = "Erreur d'analyse.";
             }
         }
 
-        function processVisionResult(rawText) {
+        async function processVisionResult(rawText) {
             let cleanedName = rawText.replace(/[\*#_]/g, '').trim();
 
             if (cleanedName.toUpperCase().includes("INCONNU") || cleanedName.length < 2) {
                 statusBox.className = "status-panel error";
-                statusBox.innerText = "❌ Aucun composant Arduino reconnu sur la photo. Cliquez ci-dessous pour réessayer !";
+                statusBox.innerText = "❌ Composant non détecté.";
             } else {
                 statusBox.className = "status-panel success";
-                
                 if (!objetsScannes.has(cleanedName)) {
                     objetsScannes.add(cleanedName);
-                    score += 100;
+                    myScore += 100;
                     
-                    document.getElementById('score-display').innerText = score;
+                    document.getElementById('score-display').innerText = myScore;
                     document.getElementById('count-display').innerText = objetsScannes.size;
-                    
-                    statusBox.innerHTML = `🎉 <strong>Nouveau composant découvert !</strong><br>+100 points : <em>${cleanedName}</em>`;
+                    statusBox.innerHTML = `🎉 <strong>Nouveau !</strong> +100 pts : <em>${cleanedName}</em>`;
+
+                    // Sauvegarder automatiquement le nouveau score dans le Cloud (Supabase)
+                    await supabase.from('profiles').update({ score: myScore }).eq('id', userSession.id);
                 } else {
-                    statusBox.innerHTML = `🔍 <strong>Déjà scanné :</strong> ${cleanedName}<br><span style="color: var(--text-muted)">Aucun point attribué pour un doublon.</span>`;
+                    statusBox.innerHTML = `🔍 <strong>Déjà scanné :</strong> ${cleanedName}`;
                 }
             }
         }
 
+        // --- CHARGEMENT DU CLASSEMENT DU MONDE EN TEMPS RÉEL ---
+        async function chargerClassement() {
+            const body = document.getElementById('leaderboard-body');
+            body.innerHTML = "<tr><td colspan='3'>Chargement du TOP mondial...</td></tr>";
+
+            // Récupère les 10 meilleurs scores triés du plus grand au plus petit
+            const { data, error } = await supabase.from('profiles').select('email, score').order('score', { ascending: false }).limit(10);
+
+            if(error) { body.innerHTML = "<tr><td colspan='3'>Erreur de chargement.</td></tr>"; return;}
+
+            body.innerHTML = "";
+            data.forEach((row, index) => {
+                // Rendre les emails anonymes (ex: te**@gmail.com) pour la confidentialité
+                let split = row.email.split('@');
+                let anonymizedEmail = split[0].substring(0,2) + "**@" + split[1];
+
+                body.innerHTML += `
+                    <tr>
+                        <td>#${index + 1}</td>
+                        <td>${anonymizedEmail} ${row.email === userSession.email ? '<strong>(Moi)</strong>' : ''}</td>
+                        <td><strong>${row.score}</strong> pts</td>
+                    </tr>
+                `;
+            });
+        }
+
         async function relancerCamera() {
-            // Rebasculer l'affichage sur la vidéo en direct
-            photoPreview.style.display = 'none';
-            video.style.display = 'block';
-            
-            // Réinitialiser les boutons
-            resetBtn.style.display = 'none';
-            scanBtn.style.display = 'block';
-            
-            // Relancer le flux vidéo
+            photoPreview.style.display = 'none'; video.style.display = 'block';
+            resetBtn.style.display = 'none'; scanBtn.style.display = 'block';
             await initCamera();
         }
 
-        // Lancement de la caméra au démarrage du site
-        initCamera();
+        // Vérifie si l'utilisateur est déjà connecté au démarrage
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            if (session) { userSession = session.user; demarrerJeu(); }
+        });
     </script>
 </body>
 </html>
