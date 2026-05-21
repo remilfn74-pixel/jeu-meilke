@@ -103,19 +103,13 @@
                 <label>Adresse Email</label>
                 <input type="email" id="auth-email" placeholder="ton-email@gmail.com">
             </div>
-            <button class="btn-action" onclick="connexionSansMotDePasse()">Recevoir mon code par email</button>
-            <div id="auth-status" class="status-panel" style="display:none;"></div>
-        </div>
-
-        <div id="screen-otp" class="screen">
-            <p style="font-size:14px; margin-bottom:15px; color:var(--text-muted)">Un code unique à 6 chiffres t'a été envoyé par email.</p>
             <div class="form-group">
-                <label>Code de vérification (A2F)</label>
-                <input type="text" id="otp-code" placeholder="123456" inputmode="numeric" pattern="[0-9]*">
+                <label>Mot de passe</label>
+                <input type="password" id="auth-password" placeholder="••••••••">
             </div>
-            <button class="btn-action" onclick="verifierCodeOTP()">Valider et jouer</button>
-            <button class="btn-action btn-secondary" onclick="changerEcran('screen-auth')">Retour</button>
-            <div id="otp-status" class="status-panel" style="display:none;"></div>
+            <button class="btn-action" onclick="connexion()">Se connecter</button>
+            <button class="btn-action btn-secondary" onclick="inscription()">Créer un compte</button>
+            <div id="auth-status" class="status-panel" style="display:none;"></div>
         </div>
 
         <div id="screen-game" class="screen">
@@ -165,12 +159,10 @@
     <canvas id="capture-canvas"></canvas>
 
     <script>
-        // CONFIGURATION SUPABASE SYNCHRONISÉE
         const SUPABASE_URL = "https://iwnqicyyblbnxsnkkiqv.supabase.co"; 
         const SUPABASE_ANON_KEY = "sb_publishable_u4MSiPhaFpuKQC2eZenLYQ_it_1GAI9";
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        // CONFIGURATION GEMINI
         const GEMINI_API_KEY = "AIzaSyAUOFfuqz-f5qOXxssqmMn00bSOZgpBdc4";
 
         let video = document.getElementById('video');
@@ -210,47 +202,50 @@
             }
         }
 
-        async function connexionSansMotDePasse() {
+        // --- NOUVEAU SYSTÈME AVEC MOT DE PASSE ---
+        async function inscription() {
             const email = document.getElementById('auth-email').value.trim();
+            const password = document.getElementById('auth-password').value.trim();
             const status = document.getElementById('auth-status');
             status.style.display = 'block';
-            status.innerText = "Envoi du code à 6 chiffres par email... 📨";
+            status.className = "status-panel";
+            status.innerText = "Création du compte... ⏳";
 
-            if(!email) { status.className="status-panel error"; status.innerText="Veuillez entrer une adresse email."; return; }
+            if(!email || !password) { status.className="status-panel error"; status.innerText="Veuillez remplir l'email et le mot de passe."; return; }
+            if(password.length < 6) { status.className="status-panel error"; status.innerText="Le mot de passe doit faire au moins 6 caractères."; return; }
 
-            // Appel mis à jour pour forcer le comportement OTP (code numérique)
-            const { error } = await supabaseClient.auth.signInWithOtp({ 
-                email: email,
-                options: {
-                    shouldCreateUser: true
-                }
-            });
+            const { data, error } = await supabaseClient.auth.signUp({ email, password });
 
             if(error) {
                 status.className="status-panel error";
                 status.innerText = "Erreur : " + error.message;
             } else {
                 status.className="status-panel success";
-                status.innerText = "Code envoyé ! Regarde ta boîte mail (et tes spams).";
-                setTimeout(() => { changerEcran('screen-otp'); }, 1500);
+                status.innerText = "Compte créé avec succès ! Connexion automatique...";
+                userSession = data.user;
+                setTimeout(() => { demarrerJeu(); }, 1200);
             }
         }
 
-        async function verifierCodeOTP() {
+        async function connexion() {
             const email = document.getElementById('auth-email').value.trim();
-            const token = document.getElementById('otp-code').value.trim();
-            const status = document.getElementById('otp-status');
+            const password = document.getElementById('auth-password').value.trim();
+            const status = document.getElementById('auth-status');
             status.style.display = 'block';
+            status.className = "status-panel";
+            status.innerText = "Vérification des identifiants... ⏳";
 
-            const { data: { session }, error } = await supabaseClient.auth.verifyOtp({ email, token, type: 'email' });
+            if(!email || !password) { status.className="status-panel error"; status.innerText="Veuillez entrer votre email et mot de passe."; return; }
+
+            const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
 
             if(error) {
                 status.className="status-panel error";
-                status.innerText = "Code invalide ou expiré : " + error.message;
+                status.innerText = "Erreur : " + error.message;
             } else {
                 status.className="status-panel success";
-                status.innerText = "Connexion réussie !";
-                userSession = session.user;
+                status.innerText = "Ravi de vous revoir !";
+                userSession = data.user;
                 setTimeout(() => { demarrerJeu(); }, 1000);
             }
         }
