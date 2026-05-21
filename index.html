@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Arduino Vision Scanner - Multijoueur</title>
-    <!-- Chargement de Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         :root {
@@ -99,17 +98,15 @@
 
     <div class="main-container">
         
-        <!-- ÉCRAN 1 : CONNEXION / INSCRIPTION -->
         <div id="screen-auth" class="screen active">
             <div class="form-group">
                 <label>Adresse Email</label>
                 <input type="email" id="auth-email" placeholder="ton-email@gmail.com">
             </div>
-            <button class="btn-action" onclick="connexionSansMotDePasse()">Recevoir mon code A2F (OTP)</button>
+            <button class="btn-action" onclick="connexionSansMotDePasse()">Recevoir mon code par email</button>
             <div id="auth-status" class="status-panel" style="display:none;"></div>
         </div>
 
-        <!-- ÉCRAN 2 : VÉRIFICATION CODE A2F -->
         <div id="screen-otp" class="screen">
             <p style="font-size:14px; margin-bottom:15px; color:var(--text-muted)">Un code unique à 6 chiffres t'a été envoyé par email.</p>
             <div class="form-group">
@@ -121,7 +118,6 @@
             <div id="otp-status" class="status-panel" style="display:none;"></div>
         </div>
 
-        <!-- ÉCRAN 3 : LE JEU -->
         <div id="screen-game" class="screen">
             <div class="nav-tabs">
                 <button id="tab-scan" class="tab-btn active" onclick="switchTab('scan')">📸 Scanner</button>
@@ -151,7 +147,7 @@
             </div>
 
             <div id="tab-content-leader" style="display:none;">
-                <h3 style="font-size:16px; margin-bottom:10px;">🏆 TOP JOUEURS MONDIAUX</h3>
+                <h3 style="font-size:16px; margin-bottom:10px;">🏆 TOP JOUEURS</h3>
                 <table class="leaderboard-table">
                     <thead>
                         <tr><th>Rang</th><th>Joueur</th><th>Score</th></tr>
@@ -218,18 +214,24 @@
             const email = document.getElementById('auth-email').value.trim();
             const status = document.getElementById('auth-status');
             status.style.display = 'block';
-            status.innerText = "Envoi du code d'authentification par email... 📨";
+            status.innerText = "Envoi du code à 6 chiffres par email... 📨";
 
             if(!email) { status.className="status-panel error"; status.innerText="Veuillez entrer une adresse email."; return; }
 
-            const { error } = await supabaseClient.auth.signInWithOtp({ email: email });
+            // Appel mis à jour pour forcer le comportement OTP (code numérique)
+            const { error } = await supabaseClient.auth.signInWithOtp({ 
+                email: email,
+                options: {
+                    shouldCreateUser: true
+                }
+            });
 
             if(error) {
                 status.className="status-panel error";
                 status.innerText = "Erreur : " + error.message;
             } else {
                 status.className="status-panel success";
-                status.innerText = "Code envoyé ! Consulte ta boîte mail.";
+                status.innerText = "Code envoyé ! Regarde ta boîte mail (et tes spams).";
                 setTimeout(() => { changerEcran('screen-otp'); }, 1500);
             }
         }
