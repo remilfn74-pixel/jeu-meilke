@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Arduino Vision Scanner - Powered by Gemini</title>
+    <title>Arduino Vision Scanner - Capture</title>
     <style>
         :root {
             --primary: #00f0ff;
@@ -64,7 +64,6 @@
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
         }
 
-        /* Dashboard Section */
         .dashboard {
             display: flex;
             justify-content: space-between;
@@ -102,7 +101,7 @@
             margin-top: 4px;
         }
 
-        /* Camera Viewport */
+        /* Zone d'affichage Caméra / Photo */
         .viewport-wrapper {
             position: relative;
             width: 100%;
@@ -114,10 +113,15 @@
             margin-bottom: 20px;
         }
 
-        video {
+        video, #photo-preview {
             width: 100%;
             height: 100%;
             object-fit: cover;
+            display: block;
+        }
+
+        #photo-preview {
+            display: none; /* Caché par défaut, affiché uniquement au moment du scan */
         }
 
         .scan-overlay {
@@ -133,15 +137,9 @@
             top: 20px; bottom: 20px; left: 20px; right: 20px;
             border: 2px dashed var(--primary);
             opacity: 0.4;
-            animation: pulse 2s infinite alternate;
         }
 
-        @keyframes pulse {
-            0% { opacity: 0.3; }
-            100% { opacity: 0.7; }
-        }
-
-        /* Controls */
+        /* Boutons */
         .btn-action {
             width: 100%;
             padding: 16px;
@@ -171,7 +169,14 @@
             box-shadow: none;
         }
 
-        /* Status & Feedback */
+        #reset-btn {
+            background: linear-gradient(135deg, #7687a1, #4a5568);
+            color: white;
+            margin-top: 10px;
+            display: none; /* Affiché seulement après un scan */
+            box-shadow: none;
+        }
+
         .status-panel {
             margin-top: 20px;
             padding: 15px;
@@ -182,26 +187,16 @@
             border-left: 4px solid var(--primary);
         }
 
-        .status-panel.success {
-            border-left-color: var(--success);
-            background: rgba(57, 255, 20, 0.05);
-        }
-
-        .status-panel.error {
-            border-left-color: var(--error);
-            background: rgba(255, 49, 49, 0.05);
-        }
-
-        canvas {
-            display: none;
-        }
+        .status-panel.success { border-left-color: var(--success); background: rgba(57, 255, 20, 0.05); }
+        .status-panel.error { border-left-color: var(--error); background: rgba(255, 49, 49, 0.05); }
+        canvas { display: none; }
     </style>
 </head>
 <body>
 
     <header>
         <h1>Arduino Vision Scanner</h1>
-        <p class="subtitle">Scannez vos composants pour gagner des points</p>
+        <p class="subtitle">Prenez une photo pour analyser et marquer des points</p>
     </header>
 
     <div class="main-container">
@@ -217,16 +212,16 @@
             </div>
         </div>
 
-        <!-- Zone Vidéo -->
+        <!-- Zone d'affichage (Vidéo ou Photo figée) -->
         <div class="viewport-wrapper">
             <video id="video" autoplay playsinline></video>
-            <div class="scan-overlay">
-                <div class="scan-reticle"></div>
-            </div>
+            <img id="photo-preview" alt="Capture à analyser">
+            <div class="scan-overlay"><div class="scan-reticle"></div></div>
         </div>
 
-        <!-- Actionneur principal -->
-        <button id="scan-btn" class="btn-action" onclick="analyserComposant()">Scanner l'objet</button>
+        <!-- Boutons de contrôle -->
+        <button id="scan-btn" class="btn-action" onclick="capturerEtAnalyser()">Scanner l'objet</button>
+        <button id="reset-btn" class="btn-action" onclick="relancerCamera()">Prendre une nouvelle photo</button>
 
         <!-- Retour d'information -->
         <div id="status-box" class="status-panel">
@@ -238,57 +233,64 @@
 
     <script>
         let video = document.getElementById('video');
+        let photoPreview = document.getElementById('photo-preview');
         let canvas = document.getElementById('capture-canvas');
-        let btn = document.getElementById('scan-btn');
+        let scanBtn = document.getElementById('scan-btn');
+        let resetBtn = document.getElementById('reset-btn');
         let statusBox = document.getElementById('status-box');
 
-        // Clé API Gemini intégrée directement
+        // Clé API Gemini intégrée
         const GEMINI_API_KEY = "AIzaSyAUOFfuqz-f5qOXxssqmMn00bSOZgpBdc4";
 
         let score = 0;
         let objetsScannes = new Set();
         let currentStream = null;
 
-        // Configuration automatique de la caméra arrière
+        // Configuration de la caméra arrière
         async function initCamera() {
             try {
                 const constraints = {
-                    video: {
-                        facingMode: "environment", // Force la caméra arrière sur smartphone
-                        width: { ideal: 640 },
-                        height: { ideal: 480 }
-                    }
+                    video: { facingMode: "environment", width: { ideal: 640 }, height: { ideal: 480 } }
                 };
                 currentStream = await navigator.mediaDevices.getUserMedia(constraints);
                 video.srcObject = currentStream;
-                statusBox.innerText = "Caméra prête ! Cadrez un composant électronique et appuyez sur Scanner.";
+                statusBox.className = "status-panel";
+                statusBox.innerText = "Caméra active ! Cadrez votre composant et cliquez sur Scanner.";
             } catch (err) {
                 statusBox.className = "status-panel error";
-                statusBox.innerText = "Impossible d'accéder à la caméra arrière. Assurez-vous d'autoriser les permissions.";
+                statusBox.innerText = "Impossible d'accéder à la caméra arrière.";
                 console.error(err);
             }
         }
 
-        async function analyserComposant() {
-            if (!currentStream) { 
-                await initCamera(); 
-                if (!currentStream) return; 
-            }
+        async function capturerEtAnalyser() {
+            if (!currentStream) return;
 
-            btn.disabled = true;
-            statusBox.className = "status-panel";
-            statusBox.innerText = "Analyse de l'image par l'IA Gemini en cours... ⏳";
-
-            // Capture de l'image depuis le flux vidéo
+            // 1. Prendre la photo immédiatement (figer l'image)
             canvas.width = video.videoWidth || 640;
             canvas.height = video.videoHeight || 480;
             let ctx = canvas.getContext('2d');
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
+            
             let base64Data = canvas.toDataURL('image/jpeg').split(',')[1];
 
-            const prompt = "Analyse cette image. Si tu distingues clairement une carte programmable (Arduino Uno, Nano, Mega, ESP32, Raspberry Pi Pico) ou un module/capteur électronique identifiable (ex: Capteur ultrason HC-SR04, Écran LCD, Servomoteur, Module RFID), réponds STRICTEMENT avec son nom usuel de manière concise (max 4 mots, ex: 'Arduino Uno' ou 'Capteur Ultrason HC-SR04'). Si l'élément n'est pas un composant électronique bien défini, ou si la photo est trop floue/ambiguë, réponds par le mot unique : INCONNU";
+            // 2. Afficher la photo figée à la place de la vidéo
+            photoPreview.src = canvas.toDataURL('image/jpeg');
+            video.style.display = 'none';
+            photoPreview.style.display = 'block';
 
+            // 3. Couper la caméra pour économiser la batterie du téléphone
+            currentStream.getTracks().forEach(track => track.stop());
+            currentStream = null;
+
+            // 4. Mettre à jour l'interface (boutons)
+            scanBtn.style.display = 'none';
+            resetBtn.style.display = 'block';
+            statusBox.className = "status-panel";
+            statusBox.innerText = "Photo capturée ! Analyse Gemini AI en cours... ⏳";
+
+            // 5. Envoi à l'IA
+            const prompt = "Analyse cette image. Si tu distingues clairement une carte programmable (Arduino Uno, Nano, Mega, ESP32, Raspberry Pi Pico) ou un module/capteur électronique identifiable (ex: Capteur ultrason HC-SR04, Écran LCD, Servomoteur, Module RFID), réponds STRICTEMENT avec son nom usuel de manière concise (max 4 mots, ex: 'Arduino Uno' ou 'Capteur Ultrason HC-SR04'). Si l'élément n'est pas un composant électronique bien défini, ou si la photo est trop floue/ambiguë, réponds par le mot unique : INCONNU";
             const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
             try {
@@ -296,19 +298,12 @@
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
-                        contents: [{
-                            parts: [
-                                { text: prompt },
-                                { inlineData: { mimeType: "image/jpeg", data: base64Data } }
-                            ]
-                        }],
+                        contents: [{ parts: [{ text: prompt }, { inlineData: { mimeType: "image/jpeg", data: base64Data } }] }],
                         generationConfig: { temperature: 0.1 }
                     })
                 });
 
-                if (!response.ok) {
-                    throw new Error("Erreur de réponse de l'API");
-                }
+                if (!response.ok) throw new Error("Erreur de réponse");
 
                 let data = await response.json();
                 let resultText = data.candidates[0].content.parts[0].text.trim();
@@ -316,10 +311,8 @@
                 processVisionResult(resultText);
             } catch (error) {
                 statusBox.className = "status-panel error";
-                statusBox.innerText = "Erreur lors de la communication avec l'IA Gemini. Vérifiez votre réseau.";
+                statusBox.innerText = "Erreur lors de l'analyse. Vérifiez votre connexion internet.";
                 console.error(error);
-            } finally {
-                btn.disabled = false;
             }
         }
 
@@ -328,7 +321,7 @@
 
             if (cleanedName.toUpperCase().includes("INCONNU") || cleanedName.length < 2) {
                 statusBox.className = "status-panel error";
-                statusBox.innerText = "❌ Aucun composant connu n'a été détecté. Ajustez la lumière ou rapprochez la carte.";
+                statusBox.innerText = "❌ Aucun composant Arduino reconnu sur la photo. Cliquez ci-dessous pour réessayer !";
             } else {
                 statusBox.className = "status-panel success";
                 
@@ -346,7 +339,20 @@
             }
         }
 
-        // Lancement de la caméra au chargement
+        async function relancerCamera() {
+            // Rebasculer l'affichage sur la vidéo en direct
+            photoPreview.style.display = 'none';
+            video.style.display = 'block';
+            
+            // Réinitialiser les boutons
+            resetBtn.style.display = 'none';
+            scanBtn.style.display = 'block';
+            
+            // Relancer le flux vidéo
+            await initCamera();
+        }
+
+        // Lancement de la caméra au démarrage du site
         initCamera();
     </script>
 </body>
