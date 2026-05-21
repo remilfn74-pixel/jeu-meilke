@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arduino Scanner Pro - Powered by Gemini</title>
+    <style>
+        :root {
+            --primary: #00f0ff;
+            --primary-dark: #00a8b5;
+            --bg-dark: #0a0e17;
+            --card-bg: #141d2f;
+            --text-main: #ffffff;
+            --text-muted: #7687a1;
+            --success: #39ff14;
+            --error: #ff3131;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            width: 100%;
+            max-width: 500px;
+        }
+
+        h1 {
+            font-size: 24px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--primary);
+            text-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+            margin-bottom: 10px;
+        }
+
+        p.subtitle {
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        .main-container {
+            width: 100%;
+            max-width: 500px;
+            background: var(--card-bg);
+            border: 1px solid rgba(0, 240, 255, 0.1);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        /* Dashboard Section */
+        .dashboard {
+            display: flex;
+            justify-content: space-between;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .stat-box {
+            text-align: center;
+            flex: 1;
+        }
+
+        .stat-box:not(:last-child) {
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .stat-val {
+            font-size: 22px;
+            font-weight: bold;
+            color: var(--primary);
+        }
+
+        .stat-val.score {
+            color: var(--success);
+            text-shadow: 0 0 10px rgba(57, 255, 20, 0.2);
+        }
+
+        .stat-lbl {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            margin-top: 4px;
+        }
+
+        /* Camera Viewport */
+        .viewport-wrapper {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 4/3;
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 2px solid rgba(0, 240, 255, 0.2);
+            margin-bottom: 20px;
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .scan-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            border: 20px solid rgba(10, 14, 23, 0.6);
+            pointer-events: none;
+            box-sizing: border-box;
+        }
+
+        .scan-reticle {
+            position: absolute;
+            top: 20px; bottom: 20px; left: 20px; right: 20px;
+            border: 2px dashed var(--primary);
+            opacity: 0.4;
+            animation: pulse 2s infinite alternate;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.3; }
+            100% { opacity: 0.7; }
+        }
+
+        /* Controls */
+        .btn-action {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: #000;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 4px 15px rgba(0, 240, 255, 0.3);
+        }
+
+        .btn-action:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 240, 255, 0.5);
+        }
+
+        .btn-action:disabled {
+            background: #2a3547;
+            color: var(--text-muted);
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        /* Status & Feedback */
+        .status-panel {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.15);
+            font-size: 14px;
+            line-height: 1.5;
+            border-left: 4px solid var(--primary);
+        }
+
+        .status-panel.success {
+            border-left-color: var(--success);
+            background: rgba(57, 255, 20, 0.05);
+        }
+
+        .status-panel.error {
+            border-left-color: var(--error);
+            background: rgba(255, 49, 49, 0.05);
+        }
+
+        canvas {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Arduino Vision Scanner</h1>
+        <p class="subtitle">Scannez vos composants pour gagner des points</p>
+    </header>
+
+    <div class="main-container">
+        <!-- Dashboard de Score -->
+        <div class="dashboard">
+            <div class="stat-box">
+                <div class="stat-val score" id="score-display">0</div>
+                <div class="stat-lbl">Points</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-val" id="count-display">0</div>
+                <div class="stat-lbl">Objets uniques</div>
+            </div>
+        </div>
+
+        <!-- Zone Vidéo -->
+        <div class="viewport-wrapper">
+            <video id="video" autoplay playsinline></video>
+            <div class="scan-overlay">
+                <div class="scan-reticle"></div>
+            </div>
+        </div>
+
+        <!-- Actionneur principal -->
+        <button id="scan-btn" class="btn-action" onclick="analyserComposant()">Scanner l'objet</button>
+
+        <!-- Retour d'information -->
+        <div id="status-box" class="status-panel">
+            Démarrage de la caméra...
+        </div>
+    </div>
+
+    <canvas id="capture-canvas"></canvas>
+
+    <script>
+        let video = document.getElementById('video');
+        let canvas = document.getElementById('capture-canvas');
+        let btn = document.getElementById('scan-btn');
+        let statusBox = document.getElementById('status-box');
+
+        let score = 0;
+        let objetsScannes = new Set();
+        let currentStream = null;
+
+        // Configuration automatique de la caméra
+        async function initCamera() {
+            try {
+                const constraints = {
+                    video: {
+                        facingMode: "environment", // Caméra arrière
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                    }
+                };
+                currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = currentStream;
+                statusBox.innerText = "Caméra prête ! Cadrez un composant électronique et appuyez sur Scanner.";
+            } catch (err) {
+                statusBox.className = "status-panel error";
+                statusBox.innerText = "Impossible d'accéder à la caméra arrière. Assurez-vous d'autoriser les permissions.";
+                console.error(err);
+            }
+        }
+
+        async function analyserComposant() {
+            btn.disabled = true;
+            statusBox.className = "status-panel";
+            statusBox.innerText = "Analyse de l'image par l'IA Gemini en cours... ⏳";
+
+            // Capture de la frame vidéo
+            canvas.width = video.videoWidth || 640;
+            canvas.height = video.videoHeight || 480;
+            let ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            let base64Data = canvas.toDataURL('image/jpeg').split(',')[1];
+
+            const prompt = "Analyse cette image. Si tu distingues clairement une carte programmable (Arduino Uno, Nano, Mega, ESP32, Raspberry Pi Pico) ou un module/capteur électronique identifiable (ex: Capteur ultrason HC-SR04, Écran LCD, Servomoteur, Module RFID), réponds STRICTEMENT avec son nom usuel de manière concise (max 4 mots, ex: 'Arduino Uno' ou 'Capteur Ultrason HC-SR04'). Si l'élément n'est pas un composant électronique bien défini, ou si la photo est trop floue/ambiguë, réponds par le mot unique : INCONNU";
+
+            // On appelle la fonction "Serverless" sécurisée de Vercel (qu'on va créer juste après)
+            try {
+                let response = await fetch('/api/scanner', {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ image: base64Data, prompt: prompt })
+                });
+
+                let data = await response.json();
+                processVisionResult(data.result);
+            } catch (error) {
+                statusBox.className = "status-panel error";
+                statusBox.innerText = "Erreur lors de la communication avec l'IA.";
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        function processVisionResult(rawText) {
+            let cleanedName = rawText.replace(/[\*#_]/g, '').trim();
+
+            if (cleanedName.toUpperCase().includes("INCONNU") || cleanedName.length < 2) {
+                statusBox.className = "status-panel error";
+                statusBox.innerText = "❌ Aucun composant connu n'a été détecté. Ajustez la lumière ou rapprochez la carte.";
+            } else {
+                statusBox.className = "status-panel success";
+                
+                if (!objetsScannes.has(cleanedName)) {
+                    objetsScannes.add(cleanedName);
+                    score += 100;
+                    
+                    document.getElementById('score-display').innerText = score;
+                    document.getElementById('count-display').innerText = objetsScannes.size;
+                    
+                    statusBox.innerHTML = `🎉 <strong>Nouveau composant découvert !</strong><br>+100 points : <em>${cleanedName}</em>`;
+                } else {
+                    statusBox.innerHTML = `🔍 <strong>Déjà scanné :</strong> ${cleanedName}<br><span style="color: var(--text-muted)">Aucun point attribué pour un doublon.</span>`;
+                }
+            }
+        }
+
+        // Lancement immédiat
+        initCamera();
+    </script>
+</body>
+</html>
